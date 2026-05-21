@@ -1,0 +1,6 @@
+{
+  "name": "منظم المواعيد",
+  "description": "تطبيق حديث لإدارة وحفظ المواعيد مع تنبيهات صوتية ومنطوقة وذكية مخصصة بالكامل تدعم المظهر الداكن والفاتح.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
