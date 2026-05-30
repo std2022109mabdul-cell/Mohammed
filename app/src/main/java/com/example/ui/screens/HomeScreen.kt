@@ -3,6 +3,11 @@ package com.example.ui.screens
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
@@ -16,6 +21,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,11 +59,17 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TextFormat
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -129,6 +141,22 @@ fun HomeScreen(
 
     // Mode: "upcoming" or "completed"
     var selectedTab by remember { mutableStateOf("upcoming") }
+    
+    var globalVoiceData by remember { mutableStateOf("") }
+    val globalSpeechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val recognizedText = matches?.firstOrNull() ?: ""
+            if (recognizedText.isNotEmpty()) {
+                globalVoiceData = recognizedText
+                editingAppointment = null
+                showAddEditSheet = true
+            }
+        }
+    }
 
     // Audio preview helper
     val soundPreviewHelper = remember { SoundPreviewHelper(context) }
@@ -152,29 +180,61 @@ fun HomeScreen(
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = {
-                        editingAppointment = null
-                        showAddEditSheet = true
-                    },
-                    modifier = Modifier
-                        .testTag("add_appointment_fab")
-                        .padding(bottom = 16.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    FloatingActionButton(
+                        onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-SA")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث لتسجيل ملاحظة أو موعد جديد...")
+                            }
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                try {
+                                    globalSpeechLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "التعرف على الصوت غير مدعوم في جهازك", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "تطبيق التعرف على الصوت غير مثبت بنظامك", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .testTag("dictate_appointment_fab")
+                            .padding(bottom = 12.dp)
+                            .size(56.dp),
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
+                        shape = RoundedCornerShape(20.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "إضافة موعد")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "إضافة موعد",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
+                        Icon(Icons.Default.Mic, contentDescription = "إملاء موعد بالصوت")
+                    }
+
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            editingAppointment = null
+                            showAddEditSheet = true
+                        },
+                        modifier = Modifier
+                            .testTag("add_appointment_fab")
+                            .padding(bottom = 12.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "إضافة موعد")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "إضافة موعد",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
                 }
             },
@@ -204,7 +264,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("search_input"),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = "بحث", tint = MaterialTheme.colorScheme.primary) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
@@ -222,13 +282,13 @@ fun HomeScreen(
                     )
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Custom Tab filters (Upcoming / Completed History)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
@@ -241,34 +301,34 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(activeBgColorUpcoming)
                             .clickable { selectedTab = "upcoming" }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             "المواعيد النشطة ($upcomingCount)",
                             fontWeight = FontWeight.Bold,
                             color = activeTxtColorUpcoming,
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                     }
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(activeBgColorCompleted)
                             .clickable { selectedTab = "completed" }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "المتتهية والأرشيف ($completedCount)",
+                            "المنتهية والأرشيف ($completedCount)",
                             fontWeight = FontWeight.Bold,
                             color = activeTxtColorCompleted,
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                     }
                 }
@@ -322,9 +382,11 @@ fun HomeScreen(
                 ) {
                     AppointmentFormSheetContent(
                         appointment = editingAppointment,
+                        initialNotes = globalVoiceData,
                         soundPreviewHelper = soundPreviewHelper,
                         onDismiss = {
                             showAddEditSheet = false
+                            globalVoiceData = ""
                             soundPreviewHelper.stopPreviousPlayback()
                         },
                         onSave = { updated ->
@@ -334,6 +396,7 @@ fun HomeScreen(
                                 viewModel.updateAppointment(updated)
                             }
                             showAddEditSheet = false
+                            globalVoiceData = ""
                             soundPreviewHelper.stopPreviousPlayback()
                         }
                     )
@@ -352,23 +415,23 @@ fun HeaderSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp, start = 20.dp, end = 20.dp),
+            .padding(top = 24.dp, bottom = 16.dp, start = 20.dp, end = 20.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
             Text(
-                "مدير المهام",
-                fontSize = 11.sp,
+                "جدولة ذكية",
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
-                letterSpacing = 2.sp
+                letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "المواعيد القادمة",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                "مهامي ومواعيدي",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onBackground
             )
         }
@@ -380,15 +443,10 @@ fun HeaderSection(
                 false -> Icons.Default.LightMode
                 else -> Icons.Default.Settings
             }
-            val label = when (darkThemeOverride) {
-                true -> "داكن"
-                false -> "فاتح"
-                else -> "تلقائي"
-            }
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
                     .clickable {
                         val next = when (darkThemeOverride) {
@@ -398,51 +456,47 @@ fun HeaderSection(
                         }
                         onThemeToggle(next)
                     }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        icon,
-                        contentDescription = "تغيير المظهر",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        label,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Icon(
+                    icon,
+                    contentDescription = "تغيير المظهر",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            // Beautiful decorative user circle from HTML: bg-[#4F378B] with outer border-[#938F99] and internal circle ring
+            // Beautiful decorative user circle
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(52.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF4F378B))
-                    .padding(2.dp),
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(CircleShape)
-                        .background(Color.Transparent)
-                        .background(Brush.linearGradient(listOf(Color(0xFFEADDFF), Color(0xFFD0BCFF))))
+                        .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha=0.6f), MaterialTheme.colorScheme.tertiary.copy(alpha=0.6f))))
                         .padding(2.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
-                            .background(Color(0xFF4F378B))
-                    )
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.align(Alignment.Center).size(24.dp)
+                        )
+                    }
                 }
             }
         }
@@ -480,15 +534,10 @@ fun SpotlightAndStatsSection(
             }
         }
 
-        val triggerLabel = when (nextAppointment.alertOffsetMinutes) {
-            0 -> "في نفس الوقت بالضبط"
-            5 -> "قبل بـ ٥ دقائق"
-            15 -> "قبل بـ ١٥ دقيقة"
-            30 -> "قبل بـ ٣٠ دقيقة"
-            60 -> "قبل بساعة"
-            120 -> "قبل بساعتين"
-            1440 -> "قبل بيوم"
-            else -> "قبل بـ ${nextAppointment.alertOffsetMinutes} دقائق"
+        val triggerLabel = remember(nextAppointment.epochMillis, nextAppointment.alertOffsetMinutes) {
+            val triggerTime = nextAppointment.epochMillis - (nextAppointment.alertOffsetMinutes * 60_000L)
+            val sdf = SimpleDateFormat("hh:mm a", java.util.Locale("ar"))
+            "تذكير: " + sdf.format(Date(triggerTime))
         }
 
         val alertLabel = when (nextAppointment.alertType) {
@@ -503,17 +552,15 @@ fun SpotlightAndStatsSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
-            shape = RoundedCornerShape(32.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF4F378B))
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Brush.radialGradient(
-                            colors = listOf(Color(0xFF6750A4), Color(0xFF4F378B)),
-                            radius = 600f
+                        Brush.linearGradient(
+                            colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
                         )
                     )
                     .padding(24.dp)
@@ -521,9 +568,15 @@ fun SpotlightAndStatsSection(
                 // Background decorative circle glow
                 Box(
                     modifier = Modifier
-                        .size(128.dp)
+                        .size(160.dp)
                         .align(Alignment.TopEnd)
-                        .background(Color(0xFFD0BCFF).copy(alpha = 0.08f), CircleShape)
+                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.05f), CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .align(Alignment.BottomStart)
+                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.05f), CircleShape)
                 )
 
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -534,46 +587,46 @@ fun SpotlightAndStatsSection(
                     ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Color(0xFFEADDFF))
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.25f))
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                "الموعد التالي",
-                                color = Color(0xFF21005D),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black
+                                "الموعد القادم",
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         
                         Text(
                             formattedRemaining,
-                            color = Color(0xFFEADDFF),
-                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.testTag("remaining_time_label")
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
                         nextAppointment.title,
                         color = Color.White,
-                        fontSize = 28.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Light,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
                     if (nextAppointment.description.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             nextAppointment.description,
-                            color = Color(0xFFEADDFF).copy(alpha = 0.8f),
-                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Normal,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -586,7 +639,7 @@ fun SpotlightAndStatsSection(
                         initialValue = 0.4f,
                         targetValue = 1f,
                         animationSpec = infiniteRepeatable(
-                            animation = tween(durationMillis = 1000),
+                            animation = tween(durationMillis = 1200),
                             repeatMode = RepeatMode.Reverse
                         ),
                         label = "pulseAlpha"
@@ -597,37 +650,37 @@ fun SpotlightAndStatsSection(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF381E72).copy(alpha = 0.40f))
-                            .padding(12.dp),
+                            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f))
+                            .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFD0BCFF)),
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (nextAppointment.alertType == "VOICE") Icons.Default.VolumeUp else Icons.Default.Notifications,
+                                imageVector = if (nextAppointment.alertType == "VOICE") Icons.AutoMirrored.Filled.VolumeUp else Icons.Default.Notifications,
                                 contentDescription = null,
-                                sizeModifier = Modifier.size(18.dp),
-                                colorTint = Color(0xFF381E72)
+                                sizeModifier = Modifier.size(20.dp),
+                                colorTint = MaterialTheme.colorScheme.primary
                             )
                         }
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "تنبيه مخصص نشط",
-                                color = Color(0xFFEADDFF).copy(alpha = 0.6f),
-                                fontSize = 10.sp,
+                                "تنبيه ذكي نشط",
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 "$alertLabel - $triggerLabel",
                                 color = Color.White,
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -637,9 +690,9 @@ fun SpotlightAndStatsSection(
                         // Pulser dot and accent
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(10.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFD0BCFF).copy(alpha = pulseAlpha))
+                                .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = pulseAlpha))
                         )
                     }
                 }
@@ -657,32 +710,32 @@ fun SpotlightAndStatsSection(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
                 modifier = Modifier
                     .background(gradientBrush)
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(32.dp)
             ) {
                 Text(
-                    "أداء المواعيد والجدولة اليومية",
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontSize = 13.sp,
+                    "إحصائيات الإنجاز والجدولة",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
                 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    StatItem(title = "المواعيد القادمة", count = upcomingCount.toString(), textColor = Color.White)
-                    StatItem(title = "المكتملة بنجاح", count = completedCount.toString(), textColor = Color.White)
-                    StatItem(title = "إجمالي المحفوظ", count = totalCount.toString(), textColor = Color.White.copy(alpha = 0.8f))
+                    StatItem(title = "قادمة", count = upcomingCount.toString(), textColor = Color.White)
+                    StatItem(title = "مكتملة", count = completedCount.toString(), textColor = Color.White)
+                    StatItem(title = "إجمالي", count = totalCount.toString(), textColor = Color.White.copy(alpha = 0.8f))
                 }
             }
         }
@@ -695,13 +748,14 @@ fun StatItem(title: String, count: String, textColor: Color) {
         Text(
             count,
             color = textColor,
-            fontSize = 24.sp,
+            fontSize = 32.sp,
             fontWeight = FontWeight.Black
         )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             title,
-            color = textColor.copy(alpha = 0.7f),
-            fontSize = 11.sp,
+            color = textColor.copy(alpha = 0.8f),
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -717,25 +771,34 @@ fun EmptyStatePlaceholder(isFilterSearch: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = if (isFilterSearch) Icons.Default.Search else Icons.Default.EventNote,
-            contentDescription = "لا يوجد مواعيد",
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(modifier = Modifier.height(14.dp))
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isFilterSearch) Icons.Default.Search else Icons.AutoMirrored.Filled.EventNote,
+                contentDescription = "لا يوجد مواعيد",
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                modifier = Modifier.size(46.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
         Text(
-            if (isFilterSearch) "لا توجد نتائج مطابقة لبحثك" else "سجل مواعيدك الآن!",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
+            if (isFilterSearch) "لا توجد نتائج" else "يومك صافي ومستعد",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onBackground
         )
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            if (isFilterSearch) "تأكد من كتابة اسم الموعد بشكل صحيح وإعادة المحاولة." else "قم بإضافة موعدك الأول وخصص نغمات تنبيه وتوقيتات تفاعلية بنفسك.",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+            if (isFilterSearch) "جرب كلمات مختلفة في البحث للتأكد من وجود الموعد." else "سجل أول مواعيدك لنبدأ في تنظيم وإدارة أوقاتك بكل احترافية وذكاء.",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 16.dp)
         )
     }
 }
@@ -766,19 +829,14 @@ fun AppointmentItemCard(
     }
 
     val formattedDate = remember(appointment.epochMillis) {
-        val sdf = SimpleDateFormat("dd MMMM yyyy", Locale("ar"))
+        val sdf = SimpleDateFormat("dd MMMM yyyy", java.util.Locale("ar"))
         sdf.format(Date(appointment.epochMillis))
     }
 
-    val triggerLabel = when (appointment.alertOffsetMinutes) {
-        0 -> "في الموعد بالضبط"
-        5 -> "قبل بـ ٥ دقائق"
-        15 -> "قبل بـ ١٥ دقيقة"
-        30 -> "قبل بـ ٣٠ دقيقة"
-        60 -> "قبل بساعة"
-        120 -> "قبل بساعتين"
-        1440 -> "قبل بيوم"
-        else -> "قبل بـ ${appointment.alertOffsetMinutes} دقيقة"
+    val triggerLabel = remember(appointment.epochMillis, appointment.alertOffsetMinutes) {
+        val triggerTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60_000L)
+        val sdf = SimpleDateFormat("hh:mm a", java.util.Locale("ar"))
+        "تذكير: " + sdf.format(Date(triggerTime))
     }
 
     val shortAlertLabel = when (appointment.alertType) {
@@ -790,49 +848,50 @@ fun AppointmentItemCard(
 
     val timeInfo = remember(appointment.epochMillis) { getHourAndAmPm(appointment.epochMillis) }
 
-    Card(
+    ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
+            .animateContentSize()
             .testTag("appointment_item_${appointment.id}"),
-        colors = CardDefaults.cardColors(
+        colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = RoundedCornerShape(24.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Elegant time period container matching user's design template
             Box(
                 modifier = Modifier
-                    .size(height = 48.dp, width = 48.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF332D41))
-                    .border(BorderStroke(1.dp, Color(0xFF49454F)), RoundedCornerShape(16.dp)),
+                    .size(height = 56.dp, width = 56.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(if (appointment.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)), RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         timeInfo.first,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        color = if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
                     )
                     Text(
                         timeInfo.second,
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Medium
+                        color = if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             // Text detail contents center
             Column(
@@ -844,38 +903,38 @@ fun AppointmentItemCard(
                     // Accent mode indicator bar
                     Box(
                         modifier = Modifier
-                            .size(width = 3.dp, height = 12.dp)
+                            .size(width = 4.dp, height = 14.dp)
                             .clip(CircleShape)
-                            .background(modeColor)
+                            .background(if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha=0.3f) else modeColor)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         appointment.title,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 if (appointment.description.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         appointment.description,
-                        fontSize = 12.sp,
-                        color = Color(0xFF938F99),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
                     formattedDate,
-                    fontSize = 10.sp,
-                    color = Color(0xFF938F99),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -889,49 +948,57 @@ fun AppointmentItemCard(
             ) {
                 Text(
                     shortAlertLabel,
-                    fontSize = 11.sp,
-                    color = Color(0xFFD0BCFF),
+                    fontSize = 12.sp,
+                    color = if (appointment.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     triggerLabel,
-                    fontSize = 9.sp,
-                    color = Color(0xFF938F99),
-                    fontWeight = FontWeight.Normal
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    fontWeight = FontWeight.SemiBold
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     IconButton(
                         onClick = onToggleComplete,
                         modifier = Modifier
-                            .size(24.dp)
+                            .size(32.dp)
                             .testTag("checkbox_${appointment.id}")
                     ) {
                         Icon(
                             imageVector = if (appointment.isCompleted) Icons.Default.CheckCircle else Icons.Default.Circle,
                             contentDescription = "تعديل الحالة",
-                            sizeModifier = Modifier.size(18.dp),
-                            colorTint = if (appointment.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            sizeModifier = Modifier.size(22.dp),
+                            colorTint = if (appointment.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                         )
                     }
 
                     IconButton(
                         onClick = onDelete,
                         modifier = Modifier
-                            .size(24.dp)
+                            .size(32.dp)
                             .testTag("delete_button_${appointment.id}")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "مسح الموعد",
-                            sizeModifier = Modifier.size(18.dp),
-                            colorTint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
+                                .padding(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "مسح الموعد",
+                                sizeModifier = Modifier.size(16.dp),
+                                colorTint = MaterialTheme.colorScheme.error.copy(alpha = 0.9f)
+                            )
+                        }
                     }
                 }
             }
@@ -954,6 +1021,7 @@ fun getSoundLabel(sound: String): String {
 @Composable
 fun AppointmentFormSheetContent(
     appointment: Appointment?,
+    initialNotes: String = "",
     soundPreviewHelper: SoundPreviewHelper,
     onDismiss: () -> Unit,
     onSave: (Appointment) -> Unit
@@ -963,11 +1031,39 @@ fun AppointmentFormSheetContent(
 
     // Form Field States
     var title by remember { mutableStateOf(appointment?.title ?: "") }
-    var description by remember { mutableStateOf(appointment?.description ?: "") }
+    var description by remember { mutableStateOf(appointment?.description ?: initialNotes) }
     var epochMillis by remember { mutableLongStateOf(appointment?.epochMillis ?: System.currentTimeMillis()) }
     var alertOffsetMinutes by remember { mutableIntStateOf(appointment?.alertOffsetMinutes ?: 0) }
     var alertType by remember { mutableStateOf(appointment?.alertType ?: "VOICE") }
     var soundTone by remember { mutableStateOf(appointment?.soundTone ?: "DEFAULT") }
+
+    // Speech Recognizer setup for title
+    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val recognizedText = matches?.firstOrNull() ?: ""
+            if (recognizedText.isNotEmpty()) {
+                title = recognizedText
+            }
+        }
+    }
+
+    // Speech Recognizer setup for description
+    val descSpeechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val recognizedText = matches?.firstOrNull() ?: ""
+            if (recognizedText.isNotEmpty()) {
+                description = recognizedText
+            }
+        }
+    }
 
     // Title validation boundary
     var isTitleError by remember { mutableStateOf(false) }
@@ -977,11 +1073,11 @@ fun AppointmentFormSheetContent(
 
     // Clean Date / Time displays
     val showDate = remember(epochMillis) {
-        val sdf = SimpleDateFormat("dd MMMM yyyy", Locale("ar"))
+        val sdf = SimpleDateFormat("dd MMMM yyyy", java.util.Locale("ar"))
         sdf.format(Date(epochMillis))
     }
     val showTime = remember(epochMillis) {
-        val sdf = SimpleDateFormat("hh:mm a", Locale("ar"))
+        val sdf = SimpleDateFormat("hh:mm a", java.util.Locale("ar"))
         sdf.format(Date(epochMillis))
     }
 
@@ -1011,9 +1107,25 @@ fun AppointmentFormSheetContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("appointment_title_input"),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(20.dp),
             isError = isTitleError,
             leadingIcon = { Icon(Icons.Default.TextFormat, contentDescription = null) },
+            trailingIcon = {
+                IconButton(onClick = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-SA")
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث لتسجيل اسم الموعد...")
+                    }
+                    try {
+                        speechRecognizerLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "التعرف على الصوت غير مدعوم في جهازك", Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Icon(Icons.Default.Mic, contentDescription = "إدخال صوتي", tint = MaterialTheme.colorScheme.primary)
+                }
+            },
             singleLine = true
         )
         if (isTitleError) {
@@ -1035,8 +1147,24 @@ fun AppointmentFormSheetContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("appointment_desc_input"),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(20.dp),
             leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
+            trailingIcon = {
+                IconButton(onClick = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-SA")
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث لتسجيل تفاصيل الموعد...")
+                    }
+                    try {
+                        descSpeechLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "التعرف على الصوت غير مدعوم", Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Icon(Icons.Default.Mic, contentDescription = "إدخال صوتي", tint = MaterialTheme.colorScheme.primary)
+                }
+            },
             maxLines = 3
         )
 
@@ -1065,9 +1193,9 @@ fun AppointmentFormSheetContent(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(52.dp)
+                    .height(60.dp)
                     .testTag("date_picker_button"),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                     contentColor = MaterialTheme.colorScheme.primary
@@ -1098,9 +1226,9 @@ fun AppointmentFormSheetContent(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(52.dp)
+                    .height(60.dp)
                     .testTag("time_picker_button"),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
                     contentColor = MaterialTheme.colorScheme.secondary
@@ -1125,39 +1253,85 @@ fun AppointmentFormSheetContent(
         )
         Spacer(modifier = Modifier.height(6.dp))
         
-        // Horizontal list of trigger time options
-        val timingOptions = listOf(
-            0 to "في نفس الوقت",
-            5 to "قبل بـ 5 د",
-            15 to "قبل بـ 15 د",
-            30 to "قبل بـ 30 د",
-            60 to "قبل بساعة",
-            120 to "قبل بساعتين",
-            1440 to "قبل بيوم"
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            timingOptions.forEach { (minutes, label) ->
-                val selected = alertOffsetMinutes == minutes
-                val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+        val reminderBaseMillis = epochMillis - (alertOffsetMinutes * 60_000L)
+        val reminderCalendar = remember(reminderBaseMillis) { Calendar.getInstance().apply { timeInMillis = reminderBaseMillis } }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(color)
-                        .clickable { alertOffsetMinutes = minutes }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        label,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
+        val showReminderDate = remember(reminderBaseMillis) {
+            val sdf = SimpleDateFormat("dd MMMM yyyy", java.util.Locale("ar"))
+            sdf.format(Date(reminderBaseMillis))
+        }
+        val showReminderTime = remember(reminderBaseMillis) {
+            val sdf = SimpleDateFormat("hh:mm a", java.util.Locale("ar"))
+            sdf.format(Date(reminderBaseMillis))
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // REMINDER DATE BUTTON
+            Button(
+                onClick = {
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, day ->
+                            val cal = Calendar.getInstance().apply { timeInMillis = reminderBaseMillis }
+                            cal.set(Calendar.YEAR, year)
+                            cal.set(Calendar.MONTH, month)
+                            cal.set(Calendar.DAY_OF_MONTH, day)
+                            alertOffsetMinutes = ((epochMillis - cal.timeInMillis) / 60_000L).toInt()
+                        },
+                        reminderCalendar.get(Calendar.YEAR),
+                        reminderCalendar.get(Calendar.MONTH),
+                        reminderCalendar.get(Calendar.DAY_OF_MONTH)
+                    ).show()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(60.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(showReminderDate, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // REMINDER TIME BUTTON
+            Button(
+                onClick = {
+                    TimePickerDialog(
+                        context,
+                        { _, hour, minute ->
+                            val cal = Calendar.getInstance().apply { timeInMillis = reminderBaseMillis }
+                            cal.set(Calendar.HOUR_OF_DAY, hour)
+                            cal.set(Calendar.MINUTE, minute)
+                            cal.set(Calendar.SECOND, 0)
+                            alertOffsetMinutes = ((epochMillis - cal.timeInMillis) / 60_000L).toInt()
+                        },
+                        reminderCalendar.get(Calendar.HOUR_OF_DAY),
+                        reminderCalendar.get(Calendar.MINUTE),
+                        false // Set true if you want 24 hours format
+                    ).show()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(60.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Alarm, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(showReminderTime, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1174,9 +1348,9 @@ fun AppointmentFormSheetContent(
         Spacer(modifier = Modifier.height(6.dp))
 
         val alertTypesList = listOf(
-            "VOICE" to ("تنبيه صوتي" to Icons.Default.VolumeUp),
+            "VOICE" to ("تنبيه صوتي" to Icons.AutoMirrored.Filled.VolumeUp),
             "TTS" to ("قارئ منطوق" to Icons.Default.Notifications),
-            "VIBRATE" to ("اهتزاز فقط" to Icons.Default.VolumeUp),
+            "VIBRATE" to ("اهتزاز تفاعلي" to Icons.AutoMirrored.Filled.VolumeUp),
             "SILENT" to ("إشعار صامت" to Icons.Default.Notifications)
         )
 
@@ -1193,16 +1367,16 @@ fun AppointmentFormSheetContent(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(bg)
                         .clickable { alertType = key }
-                        .padding(vertical = 10.dp),
+                        .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(icon, contentDescription = null, sizeModifier = Modifier.size(16.dp), colorTint = tc)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(lbl, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = tc)
+                        Icon(icon, contentDescription = null, sizeModifier = Modifier.size(20.dp), colorTint = tc)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(lbl, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = tc)
                     }
                 }
             }
@@ -1238,13 +1412,13 @@ fun AppointmentFormSheetContent(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(bg)
                             .clickable { soundTone = key }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(lbl, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = tc)
+                        Text(lbl, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tc)
                     }
                 }
             }
@@ -1263,9 +1437,9 @@ fun AppointmentFormSheetContent(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(56.dp)
                     .testTag("preview_sound_button"),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.primary
                 )
@@ -1310,21 +1484,21 @@ fun AppointmentFormSheetContent(
                 },
                 modifier = Modifier
                     .weight(1.5f)
-                    .height(50.dp)
+                    .height(56.dp)
                     .testTag("save_form_button"),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Text("حفظ الموعد والمنبه", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Text("حفظ الموعد والمنبه", fontWeight = FontWeight.Black, fontSize = 15.sp)
             }
 
             OutlinedButton(
                 onClick = onDismiss,
                 modifier = Modifier
                     .weight(1f)
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Text("إلغاء", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("إلغاء", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
     }

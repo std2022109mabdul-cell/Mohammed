@@ -17,6 +17,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -31,6 +32,8 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
     private var tts: TextToSpeech? = null
 
     override fun onReceive(context: Context, intent: Intent) {
+        val pendingResult = goAsync()
+        
         val id = intent.getIntExtra("EXTRA_APPOINTMENT_ID", -1)
         val title = intent.getStringExtra("EXTRA_APPOINTMENT_TITLE") ?: "موعد"
         val desc = intent.getStringExtra("EXTRA_APPOINTMENT_DESC") ?: ""
@@ -39,19 +42,25 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
 
         Log.d("ReminderReceiver", "Alarm received for ID $id, Title: $title, Alert: $alertType, Tone: $soundTone")
 
-        // Trigger Notification and custom alert sound/speech
+        // Trigger Notification
         showNotification(context, id, title, desc, alertType, soundTone)
 
         // Mark the appointment as triggered in database
-        if (id != -1) {
-            val db = AppDatabase.getDatabase(context)
-            CoroutineScope(Dispatchers.IO).launch {
+        val dbUpdateJob = CoroutineScope(Dispatchers.IO).launch {
+            if (id != -1) {
+                val db = AppDatabase.getDatabase(context)
                 val dao = db.appointmentDao()
                 val appointment = dao.getAppointmentById(id)
                 if (appointment != null) {
                     dao.updateAppointment(appointment.copy(isTriggered = true, isCompleted = true))
                     Log.d("ReminderReceiver", "Marked appointment $id as triggered & completed")
                 }
+            }
+        }
+
+        handleVibrationAndVoice(context, alertType, soundTone, title) {
+            dbUpdateJob.invokeOnCompletion {
+                pendingResult.finish()
             }
         }
     }
@@ -102,82 +111,120 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
 
         notificationManager.notify(id, notificationBuilder.build())
-
-        // Execute alert actions based on configuration
-        handleVibrationAndVoice(context, alertType, soundTone, title)
     }
 
-    private fun handleVibrationAndVoice(context: Context, alertType: String, soundTone: String, title: String) {
-        if (alertType == "SILENT") return
+    private fun handleVibrationAndVoice(
+        context: Context, 
+        alertType: String, 
+        soundTone: String, 
+        title: String,
+        onComplete: () -> Unit
+    ) {
+        if (alertType == "SILENT") {
+            onComplete()
+            return
+        }
 
         // 1. Vibrator Trigger
-        if (alertType != "SILENT") {
-            try {
-                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                    vibratorManager.defaultVibrator
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(
-                        VibrationEffect.createWaveform(
-                            longArrayOf(0, 400, 200, 400, 200, 400),
-                            -1 // No repeat
-                        )
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(longArrayOf(0, 400, 200, 400, 200, 400), -1)
-                }
-            } catch (e: Exception) {
-                Log.e("ReminderReceiver", "Failed to vibrate device", e)
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    VibrationEffect.createWaveform(
+                        longArrayOf(0, 400, 200, 400, 200, 400),
+                        -1 // No repeat
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(longArrayOf(0, 400, 200, 400, 200, 400), -1)
+            }
+        } catch (e: Exception) {
+            Log.e("ReminderReceiver", "Failed to vibrate device", e)
         }
 
         // 2. Sound or TTS
         if (alertType == "TTS") {
-            // Text to Speech logic
             tts = TextToSpeech(context) { status ->
                 if (status == TextToSpeech.SUCCESS) {
                     val result = tts?.setLanguage(Locale("ar"))
                     if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                        // Fallback to English if Arabic is not available
                         tts?.setLanguage(Locale.US)
                     }
+                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            onComplete()
+                            tts?.shutdown()
+                        }
+                        override fun onError(utteranceId: String?) {
+                            onComplete()
+                            tts?.shutdown()
+                        }
+                    })
                     val speechText = "تذكير بموعدك الآن: $title"
-                    tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "AppointmentTTS")
+                    tts?.speak(speechText, TextToSpeech.QUEUE_ADD, null, "AppointmentTTS")
                     Log.d("ReminderReceiver", "Spoken reminder successfully")
+                } else {
+                    onComplete()
                 }
             }
         } else if (alertType == "VOICE") {
-            // Specific Tone Playing
             when (soundTone) {
-                "DEFAULT" -> playDefaultRingtone(context)
-                "DIGITAL_BEEP" -> playDigitalBeep()
-                "SOFT_BELL" -> playSoftBell()
-                "CHIPTUNE" -> playSynthesizedChiptune()
+                "DEFAULT" -> playDefaultRingtone(context, onComplete)
+                "DIGITAL_BEEP" -> {
+                    playDigitalBeep()
+                    CoroutineScope(Dispatchers.Default).launch {
+                        kotlinx.coroutines.delay(2000)
+                        onComplete()
+                    }
+                }
+                "SOFT_BELL" -> {
+                    playSoftBell()
+                    CoroutineScope(Dispatchers.Default).launch {
+                        kotlinx.coroutines.delay(2000)
+                        onComplete()
+                    }
+                }
+                "CHIPTUNE" -> playSynthesizedChiptune(onComplete)
+                else -> {
+                    playDefaultRingtone(context, onComplete)
+                }
             }
+        } else if (alertType == "VIBRATE") {
+            CoroutineScope(Dispatchers.Default).launch {
+                kotlinx.coroutines.delay(2000)
+                onComplete()
+            }
+        } else {
+            onComplete()
         }
     }
 
-    private fun playDefaultRingtone(context: Context) {
+    private fun playDefaultRingtone(context: Context, onComplete: () -> Unit) {
         try {
             val alert = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             val ringtone = RingtoneManager.getRingtone(context, alert)
             ringtone.play()
             // Stop playing after 6 seconds
-            CoroutineScope(Dispatchers.Main).launch {
+            CoroutineScope(Dispatchers.Default).launch {
                 kotlinx.coroutines.delay(6000)
                 if (ringtone.isPlaying) {
                     ringtone.stop()
                 }
+                onComplete()
             }
         } catch (e: Exception) {
             Log.e("ReminderReceiver", "Error playing default ringtone", e)
+            onComplete()
         }
     }
 
@@ -204,7 +251,7 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun playSynthesizedChiptune() {
+    private fun playSynthesizedChiptune(onComplete: () -> Unit) {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val sampleRate = 8000
@@ -252,6 +299,8 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
                 audioTrack.release()
             } catch (e: Exception) {
                 Log.e("ReminderReceiver", "Error generating synth melody", e)
+            } finally {
+                onComplete()
             }
         }
     }
