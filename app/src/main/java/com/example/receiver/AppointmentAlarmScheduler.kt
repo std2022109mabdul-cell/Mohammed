@@ -14,13 +14,17 @@ class AppointmentAlarmScheduler(private val context: Context) {
 
     @SuppressLint("ScheduleExactAlarm")
     fun schedule(appointment: Appointment) {
-        val triggerTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60 * 1000)
+        val triggerTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60_000L)
+        val now = System.currentTimeMillis()
         
-        // Don't schedule for past times
-        if (triggerTime <= System.currentTimeMillis()) {
-            Log.d("AlarmScheduler", "Trigger time for appointment ${appointment.id} is in the past. Skipping.")
+        // If it passed more than 5 minutes ago, skip it
+        if (triggerTime < now - (5 * 60_000L)) {
+            Log.d("AlarmScheduler", "Trigger time past by >5 mins for ${appointment.id}. Skipping.")
             return
         }
+        
+        // If it just passed, trigger immediately
+        val finalTriggerTime = if (triggerTime < now) now + 1000L else triggerTime
 
         val intent = Intent(context, AppointmentReminderReceiver::class.java).apply {
             putExtra("EXTRA_APPOINTMENT_ID", appointment.id)
@@ -42,14 +46,14 @@ class AppointmentAlarmScheduler(private val context: Context) {
                 if (alarmManager.canScheduleExactAlarms()) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        triggerTime,
+                        finalTriggerTime,
                         pendingIntent
                     )
-                    Log.d("AlarmScheduler", "Scheduled EXACT alarm for ${appointment.title} at $triggerTime")
+                    Log.d("AlarmScheduler", "Scheduled EXACT alarm for ${appointment.title} at $finalTriggerTime")
                 } else {
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        triggerTime,
+                        finalTriggerTime,
                         pendingIntent
                     )
                     Log.d("AlarmScheduler", "Scheduled inexact fallback alarm for ${appointment.title} (No permission)")
@@ -57,7 +61,7 @@ class AppointmentAlarmScheduler(private val context: Context) {
             } else {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
-                    triggerTime,
+                    finalTriggerTime,
                     pendingIntent
                 )
                 Log.d("AlarmScheduler", "Scheduled exact alarm for ${appointment.title} (Pre-S)")
@@ -66,7 +70,7 @@ class AppointmentAlarmScheduler(private val context: Context) {
             // Fallback for security exception (if system rejects exact alarm scheduling)
             alarmManager.setAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
-                triggerTime,
+                finalTriggerTime,
                 pendingIntent
             )
             Log.e("AlarmScheduler", "SecurityException scheduling exact alarm. Fell back to inexact.", e)

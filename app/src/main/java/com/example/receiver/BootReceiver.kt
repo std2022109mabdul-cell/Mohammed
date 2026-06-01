@@ -22,7 +22,7 @@ class BootReceiver : BroadcastReceiver() {
                     
                     appointments.forEach { appointment ->
                         if (!appointment.isCompleted && !appointment.isTriggered) {
-                            val triggerTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60 * 1000)
+                            val triggerTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60_000L)
                             if (triggerTime > now) {
                                 scheduler.schedule(appointment)
                             }

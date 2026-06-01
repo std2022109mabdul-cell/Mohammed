@@ -102,7 +102,7 @@ class AppointmentReminderReceiver : BroadcastReceiver() {
         )
 
         val notificationBuilder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("تذكير بموعدك: $title")
             .setContentText(desc.ifEmpty { "لديك موعد مجدول الآن" })
             .setPriority(NotificationCompat.PRIORITY_MAX)

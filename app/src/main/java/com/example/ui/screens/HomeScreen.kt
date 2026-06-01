@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -119,10 +120,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+import com.example.ui.theme.ThemeColorConfig
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: AppointmentViewModel,
+    currentThemeColor: ThemeColorConfig,
+    onThemeColorChange: (ThemeColorConfig) -> Unit,
     darkThemeOverride: Boolean?,
     onThemeToggle: (Boolean?) -> Unit
 ) {
@@ -176,7 +181,9 @@ fun HomeScreen(
             topBar = {
                 HeaderSection(
                     darkThemeOverride = darkThemeOverride,
-                    onThemeToggle = onThemeToggle
+                    onThemeToggle = onThemeToggle,
+                    currentThemeColor = currentThemeColor,
+                    onThemeColorChange = onThemeColorChange
                 )
             },
             floatingActionButton = {
@@ -238,14 +245,27 @@ fun HomeScreen(
                     }
                 }
             },
-            containerColor = MaterialTheme.colorScheme.background
+            containerColor = Color.Transparent
         ) { innerPadding ->
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                                MaterialTheme.colorScheme.background,
+                                MaterialTheme.colorScheme.background
+                            )
+                        )
+                    )
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(horizontal = 16.dp)
+                ) {
                 // Dynamic Spotlight Card & Stats Row
                 SpotlightAndStatsSection(
                     upcomingAppointments = appointmentsState.upcoming,
@@ -357,12 +377,13 @@ fun HomeScreen(
                             )
                         }
                     }
-                }
-            }
+                } // closes else
+            } // closes Column
+        } // closes Box
 
-            // Bottom drawer edit/creator sheet
-            if (showAddEditSheet) {
-                ModalBottomSheet(
+        // Bottom drawer edit/creator sheet
+        if (showAddEditSheet) {
+            ModalBottomSheet(
                     onDismissRequest = {
                         showAddEditSheet = false
                         soundPreviewHelper.stopPreviousPlayback()
@@ -410,7 +431,9 @@ fun HomeScreen(
 @Composable
 fun HeaderSection(
     darkThemeOverride: Boolean?,
-    onThemeToggle: (Boolean?) -> Unit
+    onThemeToggle: (Boolean?) -> Unit,
+    currentThemeColor: ThemeColorConfig,
+    onThemeColorChange: (ThemeColorConfig) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -474,7 +497,12 @@ fun HeaderSection(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable {
+                        val allColors = ThemeColorConfig.values()
+                        val nextIndex = (currentThemeColor.ordinal + 1) % allColors.size
+                        onThemeColorChange(allColors[nextIndex])
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -491,8 +519,8 @@ fun HeaderSection(
                             .background(MaterialTheme.colorScheme.surface)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = null,
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "تغيير لون الواجهة",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.align(Alignment.Center).size(24.dp)
                         )
@@ -551,32 +579,39 @@ fun SpotlightAndStatsSection(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                .padding(vertical = 12.dp),
+            shape = RoundedCornerShape(32.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
                         Brush.linearGradient(
-                            colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary, 
+                                MaterialTheme.colorScheme.secondary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
                         )
                     )
-                    .padding(24.dp)
+                    .padding(28.dp)
             ) {
                 // Background decorative circle glow
                 Box(
                     modifier = Modifier
-                        .size(160.dp)
+                        .size(200.dp)
                         .align(Alignment.TopEnd)
-                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.05f), CircleShape)
+                        .padding(end = 40.dp, top = 20.dp)
+                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.08f), CircleShape)
                 )
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(100.dp)
                         .align(Alignment.BottomStart)
-                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.05f), CircleShape)
+                        .padding(start = 20.dp, bottom = 20.dp)
+                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.08f), CircleShape)
                 )
 
                 Column(modifier = Modifier.fillMaxWidth()) {

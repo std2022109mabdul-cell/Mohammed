@@ -90,7 +90,7 @@ class AppointmentViewModel(
                 alarmScheduler.cancel(appointment)
                 
                 val now = System.currentTimeMillis()
-                val targetTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60 * 1000)
+                val targetTime = appointment.epochMillis - (appointment.alertOffsetMinutes * 60_000L)
                 if (!appointment.isCompleted && targetTime > now) {
                     alarmScheduler.schedule(appointment)
                 }
